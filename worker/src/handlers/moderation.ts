@@ -18,7 +18,7 @@ import {
   TAG_RE,
   type TagBody,
 } from "../types";
-import { addTag, isInSiteRef, refIdentity } from "./content";
+import { addTag, deleteBranch, isInSiteRef, mergePr, refIdentity } from "./content";
 import { removeIndexEntry, updateIndexEntry } from "./index-cache";
 
 // Mark a commit reviewed. Maintainer-only, by trust tier — no token needed
@@ -100,25 +100,24 @@ export async function review(
   if (!isInSiteRef(pr.head.ref)) throw new HttpError(400, "Not an in-site edit.");
 
   if (action === "merge") {
-    await gh(env, `/repos/${repo}/pulls/${number}/merge`, {
-      method: "PUT",
-      body: JSON.stringify({ merge_method: "squash", commit_title: pr.title }),
-    });
+    const merged = await mergePr(env, repo, number, pr.title);
+    if (!merged)
+      throw new HttpError(
+        409,
+        "This edit conflicts with a newer change to the page. Close it and ask for a fresh edit.",
+      );
     // Bust the merged author's trust cache (their accepted-edit count just rose).
     // The branch ref carries the author; map it to the trust key (`gh:` for a
     // signed-in login, the bare pseudonym for anon).
-    const merged = refIdentity(pr.head.ref);
-    await invalidateContent(env, merged.isAnon ? merged.author : `gh:${merged.author}`);
+    const author = refIdentity(pr.head.ref);
+    await invalidateContent(env, author.isAnon ? author.author : `gh:${author.author}`);
   } else {
     await gh(env, `/repos/${repo}/pulls/${number}`, {
       method: "PATCH",
       body: JSON.stringify({ state: "closed" }),
     });
   }
-  await gh(env, `/repos/${repo}/git/refs/heads/${pr.head.ref}`, {
-    method: "DELETE",
-    allow404: true,
-  });
+  await deleteBranch(env, repo, pr.head.ref);
   return { ok: true };
 }
 

@@ -103,7 +103,7 @@ export async function claim(
     if (!(await repoInstallationId(env, owner, repoName)))
       throw new HttpError(400, "Install the Wikigit app on that repo first.");
   } else {
-    repo = await provisionRepo(env, name);
+    repo = await provisionRepo(env, name, owner);
   }
 
   await registerTenant(

@@ -6,6 +6,7 @@
 //
 // Run: `bun run start` (or `bun src/server.ts`). Configure via env vars — the
 // same names the Worker uses (see types.ts / .dev.vars.example), plus PORT.
+import { withClientIp } from "./clientip";
 import app from "./index";
 import { hydrateModLog } from "./modlog";
 import { MemoryKV } from "./store";
@@ -49,12 +50,12 @@ const server = Bun.serve({
   port,
   // Coolify (and any orchestrator) health-checks a cheap endpoint; answer it
   // before delegating so it never depends on GitHub/KV being reachable.
-  fetch(request) {
+  fetch(request, server) {
     const { pathname } = new URL(request.url);
     if (pathname === "/health" || pathname === "/healthz") {
       return new Response("ok", { status: 200 });
     }
-    return app.fetch(request, env);
+    return app.fetch(withClientIp(request, server.requestIP(request)?.address), env);
   },
 });
 

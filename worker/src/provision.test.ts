@@ -56,7 +56,7 @@ describe("provisionRepo", () => {
   it("creates the org repo and seeds home + config", async () => {
     const calls = stub(201);
     const { provisionRepo } = await import("./provision");
-    const repo = await provisionRepo(env(), "recipes");
+    const repo = await provisionRepo(env(), "recipes", "gh:alice");
     expect(repo).toBe("wikigit-tenants/recipes");
 
     const create = calls.find((c) => c.url.endsWith("/orgs/wikigit-tenants/repos"));
@@ -72,11 +72,15 @@ describe("provisionRepo", () => {
   it("maps a name collision (422) to a 409", async () => {
     stub(422);
     const { provisionRepo } = await import("./provision");
-    await expect(provisionRepo(env(), "taken")).rejects.toMatchObject({ status: 409 });
+    await expect(provisionRepo(env(), "taken", "gh:alice")).rejects.toMatchObject({
+      status: 409,
+    });
   });
 
   it("throws 503 when managed hosting isn't configured", async () => {
     const { provisionRepo } = await import("./provision");
-    await expect(provisionRepo({} as Env, "x")).rejects.toMatchObject({ status: 503 });
+    await expect(provisionRepo({} as Env, "x", "gh:alice")).rejects.toMatchObject({
+      status: 503,
+    });
   });
 });

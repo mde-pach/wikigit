@@ -462,10 +462,17 @@ function editCommit(env: Env, ctx: EditContext, branch: string, sha?: string): s
   });
 }
 
-async function deleteBranch(env: Env, repo: string, branch: string): Promise<void> {
+// GitHub answers 422 "Reference does not exist" (not 404) for a missing branch —
+// e.g. the no-op path, where the author never had one. Absent is the goal anyway.
+export async function deleteBranch(
+  env: Env,
+  repo: string,
+  branch: string,
+): Promise<void> {
   await gh(env, `/repos/${repo}/git/refs/heads/${branch}`, {
     method: "DELETE",
     allow404: true,
+    allow422: true,
   });
 }
 
@@ -646,7 +653,7 @@ async function autoModerate(env: Env, ctx: EditContext, sha: string): Promise<bo
 // Squash-merge a PR. Returns the new commit, or null when GitHub reports it
 // isn't mergeable (405 conflict / 409 base moved) — the one expected non-error
 // outcome, so it bypasses gh()'s throw-on-non-2xx.
-async function mergePr(
+export async function mergePr(
   env: Env,
   repo: string,
   number: number,

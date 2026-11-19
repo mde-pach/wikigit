@@ -88,9 +88,15 @@ export async function transferRepo(
 
 // Create + seed `${PLATFORM_ORG}/<name>` and return its full "owner/name". The
 // repo auto-inits (gets a default branch); we then add a home page and a
-// wikigit.json titled from the name. Idempotency: a name collision (repo exists)
-// surfaces as a clean 409 so the caller maps it to "name taken".
-export async function provisionRepo(env: Env, name: string): Promise<string> {
+// wikigit.json titled from the name. The repo belongs to the org, not the
+// creator, so the config is the only thing that makes `owner` (their identity
+// key) a maintainer of their own wiki. A name collision (repo exists) surfaces as
+// a clean 409 so the caller maps it to "name taken".
+export async function provisionRepo(
+  env: Env,
+  name: string,
+  owner: string,
+): Promise<string> {
   if (!platformEnabled(env))
     throw new HttpError(503, "Managed hosting isn't configured on this Engine.");
   const token = await platformToken(env);
@@ -124,7 +130,7 @@ export async function provisionRepo(env: Env, name: string): Promise<string> {
     token,
     repo,
     "wikigit.json",
-    `${JSON.stringify({ title: titleCase(name) }, null, 2)}\n`,
+    `${JSON.stringify({ title: titleCase(name), maintainers: [owner] }, null, 2)}\n`,
     "seed: wiki config",
   );
   return repo;

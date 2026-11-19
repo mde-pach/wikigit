@@ -86,10 +86,14 @@ describe("journey: create a hosted wiki", () => {
     const alice = await github("alice");
     await p.call("POST", "/claim", { as: alice, body: { name: "recipes" } });
 
+    const repo = `${PLATFORM_ORG}/recipes`;
+    const loaded = await p.call<{ config: Record<string, unknown> }>("GET", "/config", {
+      repo,
+    });
     const res = await p.call("POST", "/config", {
       as: alice,
-      repo: `${PLATFORM_ORG}/recipes`,
-      body: { title: "Grandma's Recipes" },
+      repo,
+      body: { ...loaded.body.config, title: "Grandma's Recipes" },
     });
     expect(res.status).toBe(200);
   });

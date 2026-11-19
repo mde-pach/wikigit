@@ -78,10 +78,14 @@ async function configMaintainers(env: Env): Promise<string[]> {
 // Every maintainer's identity key — the owner, the trusted-editors list and the
 // config maintainers, unioned + normalized (a bare login → `gh:<login>`, matching
 // isMaintainer). Used to notify maintainers of a pending review.
-export async function maintainerKeys(env: Env): Promise<string[]> {
+// `configOverride` evaluates a not-yet-saved settings list in place of the live one.
+export async function maintainerKeys(
+  env: Env,
+  configOverride?: string[],
+): Promise<string[]> {
   const [trusted, configM] = await Promise.all([
     trustedEditors(env),
-    configMaintainers(env),
+    configOverride ?? configMaintainers(env),
   ]);
   const toKey = (e: string) => (/^(gh:|wg:|anon-)/.test(e) ? e : `gh:${e}`);
   const set = new Set<string>([`gh:${env.REPO_OWNER}`]);

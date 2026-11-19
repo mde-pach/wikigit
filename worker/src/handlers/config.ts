@@ -1,7 +1,9 @@
 import { gh } from "../github";
+import { HttpError } from "../http";
 import { requireMaintainer } from "../identity";
 import { commitPayload, getCurrentFile } from "../repo";
 import { parseConfigFile, sanitizeConfig, type WikigitConfig } from "../siteconfig";
+import { maintainerKeys } from "../trust";
 import type { Env } from "../types";
 
 export const CONFIG_PATH = "wikigit.json";
@@ -27,6 +29,13 @@ export async function putConfig(
 ): Promise<{ ok: true; config: WikigitConfig }> {
   const writer = await requireMaintainer(env, request, "Editing settings");
   const config = sanitizeConfig(body);
+  // On a hosted wiki the repo is org-owned, so the config list may be the owner's
+  // only grant — dropping themselves would lock them out with no one to undo it.
+  if (!(await maintainerKeys(env, config.maintainers ?? [])).includes(writer.key))
+    throw new HttpError(
+      400,
+      "You can't remove yourself from the maintainers — you'd lose access to these settings.",
+    );
   const repo = `${env.REPO_OWNER}/${env.REPO_NAME}`;
   const current = await getCurrentFile(env, repo, CONFIG_PATH);
   await gh(env, `/repos/${repo}/contents/${CONFIG_PATH}`, {

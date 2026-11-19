@@ -70,6 +70,46 @@ describe("journey: share and run a wiki", () => {
     expect(await w.tierOf(w.alice)).toBe("maintainer");
   });
 
+  it("the owner can't lock themselves out by clearing the maintainers list", async () => {
+    const w = await ownedWiki();
+    const before = w.gh.file(w.repo, "wikigit.json");
+    const res = await w.post("/config", { title: "Recipes", maintainers: [] }, w.alice);
+    expect(res.status).toBe(400);
+    expect(w.gh.file(w.repo, "wikigit.json")).toBe(before);
+    expect(await w.tierOf(w.alice)).toBe("maintainer");
+  });
+
+  it("the owner can hand settings to a co-maintainer while keeping their own access", async () => {
+    const w = await ownedWiki();
+    const res = await w.post(
+      "/config",
+      { title: "Recipes", maintainers: ["gh:alice", "bob"] },
+      w.alice,
+    );
+    expect(res.status).toBe(200);
+    expect(await w.tierOf(w.bob)).toBe("maintainer");
+
+    const bobDropsAlice = await w.post(
+      "/config",
+      { title: "Recipes", maintainers: ["gh:bob"] },
+      w.bob,
+    );
+    expect(bobDropsAlice.status).toBe(200);
+    expect(await w.tierOf(w.alice)).toBe("open");
+  });
+
+  it("a connected repo's GitHub owner can clear the list — they stay maintainer as owner", async () => {
+    const p = await platform();
+    p.gh.createRepo("alice/notes", { "content/index.md": "# Notes\n" });
+    const alice = await github("alice", 1);
+    const res = await p.call("POST", "/config", {
+      as: alice,
+      repo: "alice/notes",
+      body: { title: "Notes", maintainers: [] },
+    });
+    expect(res.status).toBe(200);
+  });
+
   it("opening a page to everyone lets visitors publish to it directly", async () => {
     const w = await ownedWiki();
     const visitor = anon("203.0.113.7");

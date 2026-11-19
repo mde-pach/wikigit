@@ -27,7 +27,7 @@ Set these in Coolify (the same names the Worker uses — see `src/types.ts`):
 |---|---|
 | `HASH_SECRET` | a long random string (the `ip_hash` HMAC key) |
 | `REPO_OWNER` | e.g. `mde-pach` |
-| `REPO_NAME` | e.g. `wiki-n-go` |
+| `REPO_NAME` | e.g. `wikigit` |
 | `ALLOWED_ORIGIN` | comma list, e.g. `https://wikigit.org,https://*.wikigit.org` |
 
 **Write credential — set ONE**

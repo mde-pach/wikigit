@@ -1,4 +1,4 @@
-# wiki-n-go Worker
+# Wikigit Worker
 
 Anonymous edit relay: receives an in-site edit and opens a PR authored as
 `anon-<ip_hash>`. The raw IP is hashed (HMAC) and never stored or committed.

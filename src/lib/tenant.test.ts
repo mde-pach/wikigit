@@ -85,7 +85,7 @@ describe("bootTenant", () => {
 
     await bootTenant();
 
-    expect(activeRepo()).toEqual({ owner: "mde-pach", name: "wiki-n-go" });
+    expect(activeRepo()).toEqual({ owner: "mde-pach", name: "wikigit" });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -97,6 +97,6 @@ describe("bootTenant", () => {
 
     await bootTenant();
 
-    expect(activeRepo()).toEqual({ owner: "mde-pach", name: "wiki-n-go" });
+    expect(activeRepo()).toEqual({ owner: "mde-pach", name: "wikigit" });
   });
 });

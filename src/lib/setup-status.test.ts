@@ -21,9 +21,9 @@ describe("setup-status URL builders", () => {
   });
 
   it("points repo + pages links at the configured repo", () => {
-    expect(repoUrl()).toBe("https://github.com/mde-pach/wiki-n-go");
+    expect(repoUrl()).toBe("https://github.com/mde-pach/wikigit");
     expect(pagesSettingsUrl()).toBe(
-      "https://github.com/mde-pach/wiki-n-go/settings/pages",
+      "https://github.com/mde-pach/wikigit/settings/pages",
     );
   });
 

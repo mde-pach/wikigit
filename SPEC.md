@@ -257,7 +257,7 @@ costs; consider salt/epoch rotation to limit long-term linkability (M5).
 - [x] ✅ Routing for content pages; graceful "page not found" for new slugs.
 - [x] ✅ GitHub Pages deploy workflow (skips rebuild on content-only changes).
 - [x] ✅ Verified live: content edit → page updates with **no rebuild** (no workflow run).
-- Live: https://mde-pach.github.io/wiki-n-go/ · repo: `mde-pach/wiki-n-go`
+- Live: https://wikigit.org · repo: `mde-pach/wikigit`
 
 ### M1 — Wikipedia-friction anonymous editing (core Worker)
 - [x] ✅ In-site Markdown editor (Solid island) — `src/components/Editor.tsx`; builds clean.

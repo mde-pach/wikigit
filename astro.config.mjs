@@ -6,6 +6,6 @@ import { defineConfig } from "astro/config";
 // this repo working. Custom domain: set BASE_PATH=/ (or a repo var).
 export default defineConfig({
   site: process.env.SITE_URL || "https://mde-pach.github.io",
-  base: process.env.BASE_PATH || "/wiki-n-go",
+  base: process.env.BASE_PATH || "/wikigit",
   integrations: [solid()],
 });

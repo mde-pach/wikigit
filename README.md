@@ -4,10 +4,7 @@ A collaborative wiki that **renders without rebuilds** and is **edited in-site
 with Wikipedia-level friction** — no account, no token. The GitHub repo,
 Discussions, and Actions are the database; this app is the interface.
 
-**Live:** https://mde-pach.github.io/wiki-n-go/ · **Spec & tracker:** [`SPEC.md`](./SPEC.md)
-
-> The product is **Wikigit**; the infra identifiers below (repo `mde-pach/wiki-n-go`,
-> the Pages path) keep their original names so the live deployment stays valid.
+**Live:** https://wikigit.org · **Spec & tracker:** [`SPEC.md`](./SPEC.md)
 
 - **Read** — content fetched from GitHub via jsDelivr (pinned to the latest
   commit SHA), rendered client-side. No rebuild when content changes.

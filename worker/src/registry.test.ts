@@ -36,7 +36,7 @@ function env(raw: string): Env {
   kv.put("registry:raw", raw);
   return {
     REPO_OWNER: "mde-pach",
-    REPO_NAME: "wiki-n-go",
+    REPO_NAME: "wikigit",
     PLATFORM_HOST: "wikigit.org",
     RATE_LIMIT: kv,
   } as unknown as Env;
@@ -151,9 +151,9 @@ describe("resolveHost", () => {
   });
   it("resolves apex + www to the operator flagship repo", async () => {
     const r = await resolveHost(env(LINES), "wikigit.org");
-    expect(r).toEqual({ name: "", repo: "mde-pach/wiki-n-go", lane: "platform" });
+    expect(r).toEqual({ name: "", repo: "mde-pach/wikigit", lane: "platform" });
     expect((await resolveHost(env(LINES), "www.wikigit.org"))?.repo).toBe(
-      "mde-pach/wiki-n-go",
+      "mde-pach/wikigit",
     );
   });
   it("returns null for an unregistered subdomain", async () => {

@@ -16,7 +16,7 @@ function env(): Env {
     GITHUB_PLATFORM_APP_ID: "999",
     GITHUB_PLATFORM_APP_PRIVATE_KEY: PKCS1_PEM,
     PLATFORM_ORG: "wikigit-tenants",
-    REPO_NAME: "wiki-n-go",
+    REPO_NAME: "wikigit",
     CONTENT_DIR: "content",
     BRANCH: "main",
   } as unknown as Env;

@@ -13,7 +13,7 @@ const CANONICAL_ENGINE = "https://api.wikigit.org";
 
 export const config = {
   repoOwner: env.PUBLIC_REPO_OWNER || "mde-pach",
-  repoName: env.PUBLIC_REPO_NAME || "wiki-n-go",
+  repoName: env.PUBLIC_REPO_NAME || "wikigit",
   branch: "main",
   contentDir: "content",
   homeSlug: "index",

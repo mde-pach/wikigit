@@ -18,7 +18,7 @@ function fakeSession() {
 function onHost(host: string) {
   vi.stubGlobal("window", { location: { host } });
   const store = fakeSession();
-  vi.stubGlobal("sessionStorage", store);
+  vi.stubGlobal("localStorage", store);
   return store;
 }
 
@@ -62,7 +62,7 @@ describe("bootTenant", () => {
     );
   });
 
-  it("uses the sessionStorage cache without a second /resolve", async () => {
+  it("uses the localStorage cache without a second /resolve", async () => {
     const store = onHost("recipes.wikigit.org");
     store.setItem("wikigit:tenant:recipes.wikigit.org", "bob/cookbook");
     const fetchMock = vi.fn();

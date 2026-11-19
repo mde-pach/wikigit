@@ -4,7 +4,6 @@ import Contributions from "../components/Contributions.tsx";
 import CurationBoot from "../components/CurationBoot.astro";
 import PageCuration from "../components/PageCuration.tsx";
 import Toc from "../components/Toc.tsx";
-import TocMobile from "../components/TocMobile.tsx";
 import WikiPage from "../components/WikiPage.tsx";
 import { config } from "../config";
 import PageShell from "../layouts/PageShell.astro";
@@ -79,7 +78,6 @@ const displayTitle = profileTitle ?? (parsed?.title || prettify(pageSlug));
       <Toc editHref={viewHref("edit", pageSlug)} initialItems={[]} client:load />
     </div>
     <div class="col-main">
-      <TocMobile initialItems={[]} client:load />
       <CurationBoot />
       <PageCuration slug={pageSlug} bar client:idle />
       {html && <noscript id="wiki-baked" set:html={html} />}

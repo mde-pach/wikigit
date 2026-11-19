@@ -28,7 +28,6 @@ import PageMeta from "./PageMeta";
 import RecentChanges from "./RecentChanges";
 import ReviewQueue from "./ReviewQueue";
 import Toc from "./Toc";
-import TocMobile from "./TocMobile";
 import WikiPage from "./WikiPage";
 
 const VIEW_TABS = [
@@ -54,7 +53,6 @@ export default function Route404() {
                 <Toc editHref={viewHref("edit", slug)} />
               </div>
               <div class="col-main">
-                <TocMobile />
                 <WikiPage slug={slug} />
               </div>
               <div class="col-info">

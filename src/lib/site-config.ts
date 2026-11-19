@@ -1,6 +1,9 @@
 import { type AppearanceDefaults, config } from "../config";
 import { getJson } from "./api";
 import { onSwapReset } from "./cache-reset";
+import { resolveVersions } from "./content";
+import { repoSlug } from "./engine";
+import { readCached, writeCached } from "./sha-cache";
 
 // The owner-editable wiki config (committed as `wikigit.json`, served by the
 // Engine's /config). The reader merges it over the build-baked defaults at
@@ -72,9 +75,15 @@ export function loadSiteConfig(): Promise<SiteConfig> {
 async function fetchConfig(): Promise<SiteConfig> {
   if (!config.workerUrl) return defaultSiteConfig();
   try {
+    // wikigit.json is committed, so it can only change with the head sha.
+    const { sha } = await resolveVersions();
+    const key = `${repoSlug()}:config`;
+    const hit = readCached<WikigitConfig>(key, sha);
+    if (hit) return mergeSiteConfig(hit);
     const { config: over } = await getJson<{ config: WikigitConfig }>("/config", {
       cache: "default",
     });
+    writeCached(key, sha, over ?? {});
     return mergeSiteConfig(over ?? {});
   } catch {
     return defaultSiteConfig();

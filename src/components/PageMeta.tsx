@@ -1,19 +1,24 @@
-import { createResource, Show } from "solid-js";
-import { isServer } from "solid-js/web";
-import { getHistory, type Revision } from "../lib/history";
+import { createSignal, onMount, Show } from "solid-js";
+import { freshVersions } from "../lib/content";
+import { cachedHistory, getHistory, type Revision } from "../lib/history";
 import { viewHref } from "../lib/paths";
+import { tenantKnown } from "../lib/tenant";
 
-export default function PageMeta(props: { slug: string; initial?: Revision[] }) {
-  const [hist] = createResource(() => (isServer ? undefined : props.slug), getHistory, {
-    initialValue: props.initial,
+// Rendered client-only from the live (or sha-cached) history: the build's git log
+// is the flagship's, wrong on a hosted wiki and stale after any edit.
+export default function PageMeta(props: { slug: string }) {
+  const [hist, setHist] = createSignal<Revision[]>();
+  onMount(() => {
+    const blob = tenantKnown() ? freshVersions()?.versions[props.slug] : undefined;
+    const hit = blob && cachedHistory(props.slug, blob);
+    if (hit) setHist(hit);
+    else getHistory(props.slug).then(setHist, () => {});
   });
   const last = () => hist()?.[0];
   // Collapse the home → /history (not /history/index, which Pages 308-strips) — W4.
   const historyHref = viewHref("history", props.slug);
   // Format from the ISO date's own Y-M-D parts (the author's calendar day), not
-  // via toLocaleDateString — that's locale-dependent, so the build (en-US) and
-  // the reader's browser (e.g. fr) render different strings and the date visibly
-  // flips on hydration. A pure string slice is identical on server and client.
+  // via toLocaleDateString — locale-dependent output would differ between readers.
   const editedOn = (iso?: string) => {
     const m = (iso ?? "").match(/^(\d{4})-(\d{2})-(\d{2})/);
     return m ? `${m[3]}/${m[2]}/${m[1]}` : "";

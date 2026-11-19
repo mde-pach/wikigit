@@ -1,6 +1,8 @@
 import { config } from "../config";
 import { onSwapReset } from "./cache-reset";
-import { activeRepo, engineUrl } from "./engine";
+import { activeRepo, engineUrl, repoSlug } from "./engine";
+import type { PageMeta } from "./frontmatter";
+import { forgetCached, readCached, readLatest, writeCached } from "./sha-cache";
 import { bootTenant } from "./tenant";
 
 export class PageNotFoundError extends Error {
@@ -26,9 +28,31 @@ onSwapReset(() => {
   versionsCache = undefined;
 });
 
+// How long a reader trusts the version map it already holds before asking the
+// Engine again. Within it a return visit paints entirely from cache; past it one
+// small /version call decides what (if anything) changed. A write made through
+// this site drops it at once (forgetVersions), so your own edits never wait.
+const VERSIONS_FRESH_MS = 30_000;
+const versionsKey = () => `${repoSlug()}:versions`;
+
+// The cached version map when it's still fresh — synchronous, so a page can paint
+// on its first frame. Call only once the tenant is known (see tenantKnown).
+export function freshVersions(): Versions | undefined {
+  const hit = readLatest<Record<string, string>>(versionsKey());
+  if (!hit || hit.age > VERSIONS_FRESH_MS) return undefined;
+  return { sha: hit.sha, versions: hit.value };
+}
+
+export function forgetVersions(): void {
+  versionsCache = undefined;
+  forgetCached(versionsKey());
+}
+
 export function resolveVersions(): Promise<Versions> {
   if (!versionsCache) {
-    versionsCache = resolveVersionsUncached();
+    versionsCache = bootTenant().then(
+      () => freshVersions() ?? resolveVersionsUncached().then(rememberVersions),
+    );
     versionsCache.catch(() => {
       versionsCache = undefined;
     });
@@ -36,8 +60,40 @@ export function resolveVersions(): Promise<Versions> {
   return versionsCache;
 }
 
-export function resolveLatestSha(): Promise<string> {
-  return resolveVersions().then((v) => v.sha);
+// A page as rendered from one exact file (its blob sha): the article HTML with
+// its diagrams drawn but red links not yet resolved — those depend on the live
+// page set, so they're marked at paint time. `raw` is absent for a copy made from
+// the build's baked HTML. Diagrams are drawn per colour theme, hence `theme`.
+export interface CachedPage {
+  title: string;
+  html: string;
+  meta: PageMeta;
+  raw?: string;
+}
+
+const pageKey = (slug: string, theme: string) => `${repoSlug()}:page:${theme}:${slug}`;
+
+export function cachedPage(
+  slug: string,
+  blobSha: string,
+  theme: string,
+): CachedPage | undefined {
+  return readCached<CachedPage>(pageKey(slug, theme), blobSha);
+}
+
+export function rememberPage(
+  slug: string,
+  blobSha: string,
+  theme: string,
+  page: CachedPage,
+): void {
+  writeCached(pageKey(slug, theme), blobSha, page);
+}
+
+function rememberVersions(v: Versions): Versions {
+  // An empty map is the no-Engine fallback (head sha only): nothing to reuse.
+  if (Object.keys(v.versions).length) writeCached(versionsKey(), v.sha, v.versions);
+  return v;
 }
 
 // `no-store` stops the browser pinning a stale SHA after a merge; the in-flight
@@ -70,8 +126,17 @@ function cdnUrl(sha: string, slug: string): string {
   return `https://cdn.jsdelivr.net/gh/${owner}/${name}@${sha}/${path}`;
 }
 
+// The live file, from the browser cache when its blob sha hasn't changed — so
+// transclusions, hovercards and editors don't refetch an unchanged page.
 export async function fetchMarkdown(slug: string): Promise<string> {
-  return fetchMarkdownAt(slug, await resolveLatestSha());
+  const v = await resolveVersions();
+  const blob = v.versions[slug];
+  const key = `${repoSlug()}:raw:${slug}`;
+  const hit = blob ? readCached<string>(key, blob) : undefined;
+  if (hit !== undefined) return hit;
+  const raw = await fetchMarkdownAt(slug, v.sha);
+  if (blob) writeCached(key, blob, raw);
+  return raw;
 }
 
 // Fetch a page pinned to a specific commit SHA (permalink to a revision).

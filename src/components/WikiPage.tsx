@@ -13,16 +13,25 @@ import { Portal } from "solid-js/web";
 import type { EditResult } from "../lib/api";
 import { classifyTags } from "../lib/categories";
 import {
+  type CachedPage,
+  cachedPage,
   fetchMarkdown,
   fetchMarkdownAt,
+  freshVersions,
   PageNotFoundError,
+  rememberPage,
   resolveVersions,
+  type Versions,
 } from "../lib/content";
-import { decorate as decorateArticle } from "../lib/decorate";
+import {
+  decorate as decorateArticle,
+  diagramTheme,
+  renderDiagramsHtml,
+} from "../lib/decorate";
 import { findSection, type SectionSpan } from "../lib/editor-section";
 import type { PageMeta } from "../lib/frontmatter";
 import { infoboxHtml } from "../lib/infobox";
-import { pageSet } from "../lib/manifest";
+import { cachedPageSet, pageSet } from "../lib/manifest";
 import {
   BASE,
   categoryHref,
@@ -31,9 +40,11 @@ import {
   readHref,
   slugFromLocation,
 } from "../lib/paths";
+import { tenantKnown } from "../lib/tenant";
 import { errMessage } from "../lib/util";
 import { markRedLinksHtml } from "../lib/wikilink";
 import { Icons } from "./Icons";
+import TocMobile from "./TocMobile";
 
 // The section editor (and the diff/submit stack it pulls in) is only needed once
 // a reader clicks a heading's [edit], so keep it off the read-path island bundle
@@ -119,28 +130,33 @@ export default function WikiPage(props: {
   }
   onCleanup(() => clearTimeout(toastTimer));
 
-  // Render markdown with red links already resolved, so missing-target links
-  // paint red on first frame instead of flashing blue until `decorate` runs.
-  async function renderResolved(raw: string) {
+  // The cacheable render of one file: everything except red links, which depend
+  // on the live page set rather than on the file.
+  async function renderPage(raw: string): Promise<CachedPage> {
     const { renderMarkdown, decorateHeadingsHtml, emphasizeLeadHtml, splitTitle } =
       await loadMarkdown();
     const { title, body, meta } = splitTitle(raw);
     const html = emphasizeLeadHtml(
-      decorateHeadingsHtml(
-        markRedLinksHtml(renderMarkdown(body), await pageSet(), langOf(slug())),
-        slug(),
-      ),
+      decorateHeadingsHtml(renderMarkdown(body), slug()),
       title,
     );
-    return { title, html: withInfobox(html, meta) as string, meta };
+    return { title, html: await renderDiagramsHtml(html), meta, raw };
   }
+
+  // Red links are resolved before the HTML reaches the DOM, so missing-target
+  // links paint red on first frame instead of flashing blue until `decorate` runs.
+  const resolved = (page: CachedPage, pages: Set<string>) =>
+    withInfobox(
+      markRedLinksHtml(page.html, pages, langOf(slug())),
+      page.meta,
+    ) as string;
 
   // Render this page pinned to a historic commit (permalink to a revision).
   async function showRevision(rev: string) {
     try {
-      const { html, meta } = await renderResolved(await fetchMarkdownAt(slug(), rev));
-      setMeta(meta);
-      setHtml(html);
+      const page = await renderPage(await fetchMarkdownAt(slug(), rev));
+      setMeta(page.meta);
+      setHtml(resolved(page, await pageSet()));
       setRevOf(rev);
       queueMicrotask(decorate);
     } catch (e) {
@@ -153,28 +169,32 @@ export default function WikiPage(props: {
     void decorateArticle(body, { slug: slug() });
   }
 
-  function render(latest: string, title: string, m: PageMeta, html: string) {
-    // One batched update so the title, body, infobox and notices appear in a
-    // single paint — never a half-rendered page.
+  // `?redirectedfrom=` names the page that sent the reader here. Its note is
+  // shown with the content, in the same paint, so it can't push the skeleton.
+  let redirectSource: string | undefined;
+
+  // One batched update so the title, body, infobox and notices appear in a single
+  // paint — never a half-rendered page.
+  function paint(page: CachedPage, pages: Set<string>) {
     batch(() => {
-      setRaw(latest);
-      setMeta(m);
-      setHtml(html);
+      setRaw(page.raw);
+      setMeta(page.meta);
+      setRedirectedFrom(redirectSource);
+      setHtml(resolved(page, pages));
     });
     if (!props.titleOwned) {
-      const heading = title || slug();
+      const heading = page.title || prettify(slug());
       document.title = heading;
       const el = document.querySelector(".page-title");
       if (el) el.textContent = heading;
     }
-    fillCategorySlot(m.tags);
+    fillCategorySlot(page.meta.tags);
     queueMicrotask(decorate);
   }
 
   // On the static read view the footer category chips are a placeholder slot
   // (the build can't know the live tags); fill it from the page we just fetched
-  // so the chips match the commit, not the build-time copy. No-op under edge-SSR,
-  // where the chips are already server-rendered.
+  // so the chips match the commit, not the build-time copy.
   function fillCategorySlot(tags?: string[]) {
     const slot = document.querySelector<HTMLElement>(".cat-block[data-cats]");
     if (!slot) return;
@@ -193,12 +213,13 @@ export default function WikiPage(props: {
     slot.hidden = slot.innerHTML === "";
   }
 
-  async function revalidate() {
+  async function revalidate(v: Versions | undefined) {
     void loadMarkdown(); // download the renderer alongside the content fetch
     try {
-      const latest = await fetchMarkdown(slug());
-      const { title, html, meta } = await renderResolved(latest);
-      render(latest, title, meta, html);
+      const page = await renderPage(await fetchMarkdown(slug()));
+      const blob = v?.versions[slug()];
+      if (blob) rememberPage(slug(), blob, diagramTheme(), page);
+      paint(page, await pageSet());
     } catch (e) {
       // Only the freshly fetched file may be shown: on failure surface an error
       // rather than fall back to the (possibly stale) build-time snapshot.
@@ -212,50 +233,59 @@ export default function WikiPage(props: {
   }
 
   // The build-rendered article HTML, baked into a sibling <noscript> (which also
-  // gives non-JS crawlers real content). When JS is on, <noscript> children are
-  // inert text, so `.textContent` returns the markup string to inject.
-  function bakedHtml(): string | undefined {
-    return document.getElementById("wiki-baked")?.textContent || undefined;
+  // gives non-JS crawlers real content), as a page — but only when `blob` proves
+  // it current. When JS is on, <noscript> children are inert text, so
+  // `.textContent` returns the markup string to inject.
+  function bakedPage(blob: string): CachedPage | undefined {
+    const built = document.getElementById("wiki-baked")?.textContent;
+    if (!built || props.bakedSha !== blob) return undefined;
+    return { title: props.title ?? "", html: built, meta: props.meta ?? {} };
   }
 
-  // Paint the baked copy directly — no content fetch, no markdown renderer. Red
-  // links are re-resolved against the live page set (cheap, no markdown chunk) so
-  // a target created since the build doesn't paint stale-coloured.
-  async function showBaked(built: string) {
-    const live = markRedLinksHtml(built, await pageSet(), langOf(slug()));
-    batch(() => {
-      setMeta(props.meta ?? {});
-      setHtml(withInfobox(live, props.meta));
-    });
-    if (!props.titleOwned) {
-      const heading = props.title || prettify(slug());
-      document.title = heading;
-      const el = document.querySelector(".page-title");
-      if (el) el.textContent = heading;
-    }
-    fillCategorySlot(props.meta?.tags);
-    queueMicrotask(decorate);
+  const hasDiagrams = (page: CachedPage) => page.html.includes('<pre class="mermaid">');
+
+  // Paint the copy `v` proves current if it's ready in hand: the cached render of
+  // exactly that blob, or the baked HTML when it matches. Never a copy whose sha
+  // differs — no stale flash. A baked copy with diagrams isn't ready: they must
+  // be drawn first (see load).
+  function paintKnown(v: Versions, pages: Set<string>): boolean {
+    const blob = v.versions[slug()];
+    if (!blob) return false;
+    const baked = bakedPage(blob);
+    const page =
+      cachedPage(slug(), blob, diagramTheme()) ??
+      (baked && !hasDiagrams(baked) ? baked : undefined);
+    if (page) paint(page, pages);
+    return Boolean(page);
   }
 
-  // Decide which copy to show before any content paints. The baked HTML reaches
-  // the DOM only when the per-page blob sha proves it current; anything else
-  // (stale, unknown, or a failed check) goes straight to the CDN fetch.
+  // First frame: when the wiki, a fresh version map and its page set are all in
+  // the browser, paint without touching the network. Otherwise one /version call
+  // decides between a cached or baked copy and a CDN fetch.
   async function load() {
-    let current = false;
+    if (tenantKnown()) {
+      const fresh = freshVersions();
+      const pages = fresh && cachedPageSet(fresh.sha);
+      if (fresh && pages && paintKnown(fresh, pages)) return;
+    }
+    let v: Versions | undefined;
     try {
-      const { versions } = await resolveVersions();
-      current = !!props.bakedSha && versions[slug()] === props.bakedSha;
+      v = await resolveVersions();
     } catch {
       // Couldn't resolve versions → treat as stale and let revalidate() fetch.
     }
-    const built = bakedHtml();
-    if (current && built) return void showBaked(built);
-    void revalidate();
+    if (v && paintKnown(v, await pageSet())) return;
+    const blob = v?.versions[slug()];
+    const baked = blob && bakedPage(blob);
+    if (!blob || !baked) return void revalidate(v);
+    const drawn = { ...baked, html: await renderDiagramsHtml(baked.html) };
+    rememberPage(slug(), blob, diagramTheme(), drawn);
+    paint(drawn, await pageSet());
   }
 
   onMount(() => {
     const params = new URLSearchParams(window.location.search);
-    setRedirectedFrom(params.get("redirectedfrom") ?? undefined);
+    redirectSource = params.get("redirectedfrom") ?? undefined;
     const rev = params.get("rev");
     if (rev) return void showRevision(rev); // historical view; skip the latest fetch
     void load();
@@ -318,8 +348,7 @@ export default function WikiPage(props: {
   // already in hand, so this is instant and never shows stale content.
   async function showPublished(doc: string) {
     try {
-      const { title, html, meta } = await renderResolved(doc);
-      render(doc, title, meta, html);
+      paint(await renderPage(doc), await pageSet());
     } catch {
       /* a render glitch shouldn't strand the editor — keep the current content */
     }
@@ -374,6 +403,9 @@ export default function WikiPage(props: {
           )}
         </Show>
         <Show when={html()} fallback={<ArticleSkeleton />}>
+          {/* Mounted with the content (not as a sibling island that fills in
+              later), so the mobile contents box can't push the article down. */}
+          <TocMobile />
           <div
             ref={(el) => {
               body = el;

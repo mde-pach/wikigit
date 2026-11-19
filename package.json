@@ -13,6 +13,8 @@
     "check": "biome check --write .",
     "test": "vitest run",
     "test:cov": "vitest run --coverage",
+    "build:e2e": "SITE_URL=https://wikigit.org BASE_PATH=/ PUBLIC_WORKER_URL=https://api.wikigit.org PUBLIC_REPO_OWNER=mde-pach PUBLIC_REPO_NAME=wikigit PUBLIC_PLATFORM_HOST=wikigit.org astro build",
+    "test:e2e": "bun run build:e2e && playwright test",
     "verify": "biome check . && vitest run && astro build && cd worker && bun run verify && cd ../accounts && bun test"
   },
   "dependencies": {
@@ -32,6 +34,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.1.2",
+    "@playwright/test": "^1.65.1",
     "@types/markdown-it": "^14.1.2",
     "@types/markdown-it-anchor": "^7.0.0",
     "@vitest/coverage-v8": "^4.1.9",

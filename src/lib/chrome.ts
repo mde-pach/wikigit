@@ -113,7 +113,7 @@ export function chromeCacheKey(host: string): string {
 
 export function cacheChrome(host: string, bits: ChromeBits): void {
   try {
-    sessionStorage.setItem(chromeCacheKey(host), JSON.stringify(bits));
+    localStorage.setItem(chromeCacheKey(host), JSON.stringify(bits));
   } catch {
     // private mode / storage full — pre-paint just falls back to the flash path
   }

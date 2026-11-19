@@ -41,7 +41,7 @@ const defaults: AppearanceDefaults = { ...config.appearance, ...appearance };
       // A hosted tenant's Appearance (cached by SiteBoot) overrides the build
       // default, so a reload / View-Transition swap applies it before first paint.
       try {
-        const raw = sessionStorage.getItem("wikigit:chrome:" + location.host);
+        const raw = localStorage.getItem("wikigit:chrome:" + location.host);
         const c = raw && JSON.parse(raw);
         if (c && c.appearance) defs = Object.assign({}, defs, c.appearance);
       } catch {}

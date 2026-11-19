@@ -36,3 +36,22 @@ jobs:
       - name: Worker verify (typecheck + tests)
         run: bun run verify
         working-directory: worker
+
+  # Reader behaviour in a real browser against the wikigit.org-shaped build:
+  # nothing shifts while pages load, and return visits reuse the sha cache.
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install app deps
+        run: bun install --frozen-lockfile
+
+      - name: Install Chromium
+        run: bunx playwright install --with-deps chromium
+
+      - name: Browser tests
+        run: bun run test:e2e

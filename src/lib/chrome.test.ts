@@ -83,9 +83,9 @@ describe("applyWordmark", () => {
 });
 
 describe("cacheChrome", () => {
-  it("writes the bits to sessionStorage under the host key", () => {
+  it("writes the bits to localStorage under the host key", () => {
     const store: Record<string, string> = {};
-    vi.stubGlobal("sessionStorage", {
+    vi.stubGlobal("localStorage", {
       setItem: (k: string, v: string) => {
         store[k] = v;
       },
@@ -103,7 +103,7 @@ describe("cacheChrome", () => {
   });
 
   it("swallows storage errors (private mode)", () => {
-    vi.stubGlobal("sessionStorage", {
+    vi.stubGlobal("localStorage", {
       setItem: () => {
         throw new Error("nope");
       },

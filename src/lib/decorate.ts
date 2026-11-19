@@ -100,19 +100,49 @@ function loadTransclude(slug: string): Promise<string> {
 // Lazy-render ```mermaid blocks. Mermaid is heavy and only some pages use it, so
 // it's a dynamic import loaded on demand — never in the base bundle. Diagram
 // source is user content, so render under the strict (sanitizing) security level.
+async function loadMermaid() {
+  const { default: mermaid } = await import("mermaid");
+  mermaid.initialize({
+    startOnLoad: false,
+    securityLevel: "strict",
+    theme: diagramTheme() === "dark" ? "dark" : "default",
+  });
+  return mermaid;
+}
+
+export const diagramTheme = () =>
+  document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+
 export async function renderMermaid(root: HTMLElement): Promise<void> {
   const blocks = root.querySelectorAll<HTMLElement>(
     "pre.mermaid:not([data-processed])",
   );
   if (blocks.length === 0) return;
-  const { default: mermaid } = await import("mermaid");
-  const dark = document.documentElement.dataset.theme === "dark";
-  mermaid.initialize({
-    startOnLoad: false,
-    securityLevel: "strict",
-    theme: dark ? "dark" : "default",
-  });
+  const mermaid = await loadMermaid();
   await mermaid.run({ nodes: Array.from(blocks), suppressErrors: true });
+}
+
+// Draw an article's diagrams into its HTML before it's painted. A drawn diagram
+// is a different height from its source block, so drawing it in place afterwards
+// would push down everything below it.
+let diagramSeq = 0;
+export async function renderDiagramsHtml(html: string): Promise<string> {
+  if (!html.includes('<pre class="mermaid">')) return html;
+  const doc = new DOMParser().parseFromString(`<body>${html}</body>`, "text/html");
+  const mermaid = await loadMermaid();
+  for (const pre of doc.querySelectorAll("pre.mermaid:not([data-processed])")) {
+    try {
+      const { svg } = await mermaid.render(
+        `diagram-${++diagramSeq}`,
+        pre.textContent ?? "",
+      );
+      pre.innerHTML = svg;
+      pre.setAttribute("data-processed", "true");
+    } catch {
+      // An invalid diagram keeps its source visible, as mermaid.run would.
+    }
+  }
+  return doc.body.innerHTML;
 }
 
 // Append a per-section `edit` link to each heading → opens the editor scoped

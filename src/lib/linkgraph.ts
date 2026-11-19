@@ -1,7 +1,9 @@
 import { config } from "../config";
-import { engineUrl } from "./engine";
+import { resolveVersions } from "./content";
+import { engineUrl, repoSlug } from "./engine";
 import { fetchFirstOk } from "./net";
 import { BASE, slugifyLabel } from "./paths";
+import { readCached, writeCached } from "./sha-cache";
 import { bootTenant } from "./tenant";
 
 export interface PageNode {
@@ -154,13 +156,23 @@ export function mostLinked(
 let cache: Promise<LinkGraph | null> | undefined;
 
 // Prefer the Worker's live index (fresh on every edit, no rebuild); fall back to
-// the static build file when there's no Worker / it's unreachable. Fetched once.
+// the static build file when there's no Worker / it's unreachable. Kept per head
+// sha, so it's refetched only after a commit.
 async function load(): Promise<LinkGraph | null> {
   await bootTenant();
-  return fetchFirstOk<LinkGraph>([
+  const sha = await resolveVersions().then(
+    (v) => v.sha,
+    () => undefined,
+  );
+  const key = `${repoSlug()}:link-graph`;
+  const hit = sha && readCached<LinkGraph>(key, sha);
+  if (hit) return hit;
+  const graph = await fetchFirstOk<LinkGraph>([
     config.workerUrl ? engineUrl("/link-graph") : null,
     `${BASE}/link-graph.json`,
   ]);
+  if (graph && sha) writeCached(key, sha, graph);
+  return graph;
 }
 
 export function getLinkGraph(): Promise<LinkGraph | null> {

@@ -21,3 +21,7 @@ setup-page.png
 
 # test coverage output
 coverage/
+
+# Playwright output
+test-results/
+playwright-report/

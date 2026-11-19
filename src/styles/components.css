@@ -112,7 +112,13 @@
   height: var(--header-h-compact);
 }
 
+/* The wordmark and the personal tools split the space beside the search evenly,
+   whatever they contain: a hosted wiki's title (known only once its config
+   loads) or the signed-in avatar can't move the search or each other. */
 .wordmark {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
   display: inline-flex;
   align-items: baseline;
   gap: 0.05em;
@@ -123,10 +129,13 @@
   font-size: 1.18rem;
   color: var(--color-ink);
   text-decoration: none;
-  flex: none;
 }
 .wordmark:hover {
   text-decoration: none;
+}
+.wordmark .wm-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .wordmark .wm-accent {
   color: var(--color-accent);
@@ -377,8 +386,9 @@
 .header-actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: var(--gap-chrome);
-  flex: none;
+  flex: 1 1 0;
 }
 .seg {
   display: inline-flex;
@@ -456,10 +466,13 @@
   margin: 0;
   color: var(--color-ink);
 }
+/* One line, always: it fills in after load, and a wrap would push the tabs. */
 .page-meta {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  overflow: hidden;
   gap: 0.5rem;
   font-family: var(--font-ui);
   font-size: var(--text-sm);
@@ -2085,6 +2098,20 @@ a.preview-body:focus-visible .pv-foot {
   }
   100% {
     background-position: 0 0;
+  }
+}
+/* Until the article arrives its height is unknown, so anything laid out below it
+   would be shoved when it lands. Keep that out of the layout meanwhile: content
+   that appears is not a shift, content that moves is. Scripting-only, so a no-JS
+   reader (who keeps the skeleton) still gets the footer. */
+@media (scripting: enabled) {
+  body:has(.sk-article) .site-footer {
+    display: none;
+  }
+}
+@media (scripting: enabled) and (max-width: 1080px) {
+  body:has(.sk-article) .col-info {
+    display: none;
   }
 }
 .sk-article {

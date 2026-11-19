@@ -45,23 +45,41 @@ export async function engineFetch(path: string, init?: RequestInit): Promise<Res
   return fetch(engineUrl(path), init);
 }
 
+// The flagship apex/www keeps the baked config. A platform subdomain AND a host
+// outside the platform domain (null = a possible custom domain) both ask the
+// Engine — an unregistered host just 404s and falls back to baked config.
+function needsResolve(host: string): boolean {
+  const label = subdomainLabel(host, config.platformHost);
+  return label !== "" && label !== "www";
+}
+
+// Kept across visits (not per tab) so a return visit knows its wiki without a
+// round-trip. A host only changes repo when its wiki is transferred.
+function cachedRepo(host: string): Repo | null {
+  try {
+    const raw = localStorage.getItem(CACHE_PREFIX + host);
+    return raw ? parseRepo(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+// Synchronous half of the boot: true when the active repo is already known
+// (baked, or remembered from a previous visit), so a caller can paint from cache
+// in the first frame instead of awaiting bootTenant().
+export function tenantKnown(): boolean {
+  if (typeof window === "undefined") return false;
+  const host = window.location.host;
+  if (!needsResolve(host)) return true;
+  const repo = cachedRepo(host);
+  if (repo) setActiveRepo(repo);
+  return repo !== null;
+}
+
 async function resolveOnce(): Promise<void> {
   if (typeof window === "undefined") return; // build/SSR: keep baked config
   const host = window.location.host;
-  const label = subdomainLabel(host, config.platformHost);
-  // Skip only the flagship apex/www (baked). A platform subdomain (label) AND a
-  // host outside the platform domain (null = a possible custom domain) both ask
-  // the Engine — an unregistered host just 404s and falls back to baked config.
-  if (label === "" || label === "www") return;
-
-  const cached = sessionStorage.getItem(CACHE_PREFIX + host);
-  if (cached) {
-    const repo = parseRepo(cached);
-    if (repo) {
-      setActiveRepo(repo);
-      return;
-    }
-  }
+  if (tenantKnown()) return;
   try {
     const res = await fetch(
       `${config.workerUrl}/resolve?host=${encodeURIComponent(host)}`,
@@ -71,7 +89,9 @@ async function resolveOnce(): Promise<void> {
     const parsed = parseRepo(repo);
     if (parsed) {
       setActiveRepo(parsed);
-      sessionStorage.setItem(CACHE_PREFIX + host, repo);
+      try {
+        localStorage.setItem(CACHE_PREFIX + host, repo);
+      } catch {}
     }
   } catch {
     // network hiccup → fall back to baked config rather than blocking the reader

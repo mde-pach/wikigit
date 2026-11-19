@@ -457,7 +457,10 @@
   justify-content: space-between;
   gap: 1rem;
 }
+/* Shrinkable, so its loading placeholder never pushes the language toggle past
+   the row's edge (it would snap back once the real title lands). */
 .page-title {
+  min-width: 0;
   font-family: var(--font-display);
   font-weight: var(--weight-bold);
   font-size: var(--text-3xl);

@@ -1,10 +1,13 @@
 ---
 // Start the faces that set first-screen text downloading with the HTML rather
-// than after the CSS that declares them: the body serif (cuts the cold-load FOUT)
-// and the UI face, whose late swap widens the wordmark and nudges the header.
+// than after the CSS that declares them — a face that arrives after its text has
+// painted re-measures it and moves what follows: the body serif, the UI face
+// (wordmark, tabs), and mono (the author name in the "last edited" line).
+import monoFontUrl from "@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2?url";
 import uiFontUrl from "@fontsource-variable/libre-franklin/files/libre-franklin-latin-wght-normal.woff2?url";
 import bodyFontUrl from "@fontsource-variable/source-serif-4/files/source-serif-4-latin-wght-normal.woff2?url";
 ---
 
 <link rel="preload" as="font" type="font/woff2" href={bodyFontUrl} crossorigin />
 <link rel="preload" as="font" type="font/woff2" href={uiFontUrl} crossorigin />
+<link rel="preload" as="font" type="font/woff2" href={monoFontUrl} crossorigin />

@@ -1,6 +1,5 @@
 import { createSignal, onMount, Show } from "solid-js";
-import { freshVersions } from "../lib/content";
-import { cachedHistory, getHistory, type Revision } from "../lib/history";
+import { getHistory, lastSeenHistory, type Revision } from "../lib/history";
 import { viewHref } from "../lib/paths";
 import { tenantKnown } from "../lib/tenant";
 
@@ -8,11 +7,11 @@ import { tenantKnown } from "../lib/tenant";
 // is the flagship's, wrong on a hosted wiki and stale after any edit.
 export default function PageMeta(props: { slug: string }) {
   const [hist, setHist] = createSignal<Revision[]>();
+  // Paint what this browser last saw, then the live history (same text when
+  // the page hasn't changed; the line is fixed-height, so a change can't shift).
   onMount(() => {
-    const blob = tenantKnown() ? freshVersions()?.versions[props.slug] : undefined;
-    const hit = blob && cachedHistory(props.slug, blob);
-    if (hit) setHist(hit);
-    else getHistory(props.slug).then(setHist, () => {});
+    if (tenantKnown()) setHist(lastSeenHistory(props.slug));
+    getHistory(props.slug).then(setHist, () => {});
   });
   const last = () => hist()?.[0];
   // Collapse the home → /history (not /history/index, which Pages 308-strips) — W4.

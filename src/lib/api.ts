@@ -1,5 +1,4 @@
 import { authHeaders } from "./auth";
-import { forgetVersions } from "./content";
 import { engineFetch } from "./tenant";
 
 // The terminal outcome of a submit, as a tagged union so every case is handled
@@ -73,11 +72,7 @@ export async function postJson<T>(
     headers: { "Content-Type": "application/json", ...(auth ? authHeaders() : {}) },
     body: JSON.stringify(body),
   });
-  const data = await readJson<T>(res);
-  // Any accepted write (move, delete, review, settings…) can change what's live;
-  // don't let the reader keep trusting the version map it cached before it.
-  forgetVersions();
-  return data;
+  return readJson<T>(res);
 }
 
 export function getWhoami(): Promise<WhoAmI> {
@@ -99,7 +94,6 @@ export async function submitEdit(
   summary?: string,
   onProgress?: (p: Progress) => void,
 ): Promise<EditResult> {
-  forgetVersions();
   const res = await engineFetch("/edit", {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },

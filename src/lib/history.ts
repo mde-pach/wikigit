@@ -2,7 +2,7 @@ import { getJson } from "./api";
 import { onSwapReset } from "./cache-reset";
 import { resolveVersions } from "./content";
 import { repoSlug } from "./engine";
-import { readCached, writeCached } from "./sha-cache";
+import { readCached, readLatest, writeCached } from "./sha-cache";
 
 export interface Revision {
   sha: string;
@@ -36,15 +36,17 @@ export function getHistory(slug: string): Promise<Revision[]> {
 }
 
 // A page's history only changes when the page does, so it's kept under the
-// page's blob sha. Synchronous, for a first-frame paint.
+// page's blob sha.
 const historyKey = (slug: string) => `${repoSlug()}:history:${slug}`;
-export function cachedHistory(slug: string, blobSha: string): Revision[] | undefined {
-  return readCached<Revision[]>(historyKey(slug), blobSha);
+
+// The history as this browser last saw it — synchronous, for a first-frame paint.
+export function lastSeenHistory(slug: string): Revision[] | undefined {
+  return readLatest<Revision[]>(historyKey(slug))?.value;
 }
 
 async function loadHistory(slug: string): Promise<Revision[]> {
   const blob = (await resolveVersions().catch(() => undefined))?.versions[slug];
-  const hit = blob ? cachedHistory(slug, blob) : undefined;
+  const hit = blob ? readCached<Revision[]>(historyKey(slug), blob) : undefined;
   if (hit) return hit;
   const { revisions } = await getHistoryPage(slug, 1);
   if (blob) writeCached(historyKey(slug), blob, revisions);

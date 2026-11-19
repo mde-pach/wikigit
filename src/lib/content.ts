@@ -2,7 +2,7 @@ import { config } from "../config";
 import { onSwapReset } from "./cache-reset";
 import { activeRepo, engineUrl, repoSlug } from "./engine";
 import type { PageMeta } from "./frontmatter";
-import { forgetCached, readCached, readLatest, writeCached } from "./sha-cache";
+import { readCached, readLatest, writeCached } from "./sha-cache";
 import { bootTenant } from "./tenant";
 
 export class PageNotFoundError extends Error {
@@ -28,31 +28,9 @@ onSwapReset(() => {
   versionsCache = undefined;
 });
 
-// How long a reader trusts the version map it already holds before asking the
-// Engine again. Within it a return visit paints entirely from cache; past it one
-// small /version call decides what (if anything) changed. A write made through
-// this site drops it at once (forgetVersions), so your own edits never wait.
-const VERSIONS_FRESH_MS = 30_000;
-const versionsKey = () => `${repoSlug()}:versions`;
-
-// The cached version map when it's still fresh — synchronous, so a page can paint
-// on its first frame. Call only once the tenant is known (see tenantKnown).
-export function freshVersions(): Versions | undefined {
-  const hit = readLatest<Record<string, string>>(versionsKey());
-  if (!hit || hit.age > VERSIONS_FRESH_MS) return undefined;
-  return { sha: hit.sha, versions: hit.value };
-}
-
-export function forgetVersions(): void {
-  versionsCache = undefined;
-  forgetCached(versionsKey());
-}
-
 export function resolveVersions(): Promise<Versions> {
   if (!versionsCache) {
-    versionsCache = bootTenant().then(
-      () => freshVersions() ?? resolveVersionsUncached().then(rememberVersions),
-    );
+    versionsCache = resolveVersionsUncached();
     versionsCache.catch(() => {
       versionsCache = undefined;
     });
@@ -73,12 +51,14 @@ export interface CachedPage {
 
 const pageKey = (slug: string, theme: string) => `${repoSlug()}:page:${theme}:${slug}`;
 
-export function cachedPage(
+// The page as this browser last saw it, whatever its version — what a visit
+// paints first, before the live version says whether it changed.
+export function lastSeenPage(
   slug: string,
-  blobSha: string,
   theme: string,
-): CachedPage | undefined {
-  return readCached<CachedPage>(pageKey(slug, theme), blobSha);
+): { blob: string; page: CachedPage } | undefined {
+  const hit = readLatest<CachedPage>(pageKey(slug, theme));
+  return hit && { blob: hit.sha, page: hit.value };
 }
 
 export function rememberPage(
@@ -88,12 +68,6 @@ export function rememberPage(
   page: CachedPage,
 ): void {
   writeCached(pageKey(slug, theme), blobSha, page);
-}
-
-function rememberVersions(v: Versions): Versions {
-  // An empty map is the no-Engine fallback (head sha only): nothing to reuse.
-  if (Object.keys(v.versions).length) writeCached(versionsKey(), v.sha, v.versions);
-  return v;
 }
 
 // `no-store` stops the browser pinning a stale SHA after a merge; the in-flight

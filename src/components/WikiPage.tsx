@@ -14,10 +14,9 @@ import type { EditResult } from "../lib/api";
 import { classifyTags } from "../lib/categories";
 import {
   type CachedPage,
-  cachedPage,
   fetchMarkdown,
   fetchMarkdownAt,
-  freshVersions,
+  lastSeenPage,
   PageNotFoundError,
   rememberPage,
   resolveVersions,
@@ -31,7 +30,7 @@ import {
 import { findSection, type SectionSpan } from "../lib/editor-section";
 import type { PageMeta } from "../lib/frontmatter";
 import { infoboxHtml } from "../lib/infobox";
-import { cachedPageSet, pageSet } from "../lib/manifest";
+import { lastSeenPageSet, pageSet } from "../lib/manifest";
 import {
   BASE,
   categoryHref,
@@ -175,7 +174,11 @@ export default function WikiPage(props: {
 
   // One batched update so the title, body, infobox and notices appear in a single
   // paint — never a half-rendered page.
-  function paint(page: CachedPage, pages: Set<string>) {
+  // What's on screen, so a revalidation that finds nothing new repaints nothing.
+  let shown: { page: CachedPage; pages: Set<string>; blob?: string } | undefined;
+
+  function paint(page: CachedPage, pages: Set<string>, blob?: string) {
+    shown = { page, pages, blob };
     batch(() => {
       setRaw(page.raw);
       setMeta(page.meta);
@@ -213,23 +216,28 @@ export default function WikiPage(props: {
     slot.hidden = slot.innerHTML === "";
   }
 
+  // Fetch, render, cache and show the live file.
   async function revalidate(v: Versions | undefined) {
     void loadMarkdown(); // download the renderer alongside the content fetch
     try {
       const page = await renderPage(await fetchMarkdown(slug()));
       const blob = v?.versions[slug()];
       if (blob) rememberPage(slug(), blob, diagramTheme(), page);
-      paint(page, await pageSet());
+      paint(page, await pageSet(), blob);
     } catch (e) {
-      // Only the freshly fetched file may be shown: on failure surface an error
-      // rather than fall back to the (possibly stale) build-time snapshot.
-      if (!props.titleOwned) {
-        const el = document.querySelector(".page-title");
-        if (el) el.textContent = prettify(slug());
-      }
-      if (e instanceof PageNotFoundError) setNotFound(true);
-      else setErr(errMessage(e));
+      // Offline with a cached copy on screen: keep showing it.
+      if (shown && !(e instanceof PageNotFoundError)) return;
+      fail(e);
     }
+  }
+
+  function fail(e: unknown) {
+    if (!props.titleOwned) {
+      const el = document.querySelector(".page-title");
+      if (el) el.textContent = prettify(slug());
+    }
+    if (e instanceof PageNotFoundError) setNotFound(true);
+    else setErr(errMessage(e));
   }
 
   // The build-rendered article HTML, baked into a sibling <noscript> (which also
@@ -242,45 +250,39 @@ export default function WikiPage(props: {
     return { title: props.title ?? "", html: built, meta: props.meta ?? {} };
   }
 
-  const hasDiagrams = (page: CachedPage) => page.html.includes('<pre class="mermaid">');
+  const sameSet = (a: Set<string>, b?: Set<string>) =>
+    b !== undefined && a.size === b.size && [...a].every((s) => b.has(s));
 
-  // Paint the copy `v` proves current if it's ready in hand: the cached render of
-  // exactly that blob, or the baked HTML when it matches. Never a copy whose sha
-  // differs — no stale flash. A baked copy with diagrams isn't ready: they must
-  // be drawn first (see load).
-  function paintKnown(v: Versions, pages: Set<string>): boolean {
-    const blob = v.versions[slug()];
-    if (!blob) return false;
-    const baked = bakedPage(blob);
-    const page =
-      cachedPage(slug(), blob, diagramTheme()) ??
-      (baked && !hasDiagrams(baked) ? baked : undefined);
-    if (page) paint(page, pages);
-    return Boolean(page);
-  }
-
-  // First frame: when the wiki, a fresh version map and its page set are all in
-  // the browser, paint without touching the network. Otherwise one /version call
-  // decides between a cached or baked copy and a CDN fetch.
+  // Stale-while-revalidate: paint the copy this browser last saw at once, then
+  // ask for the live version. Unchanged → nothing more to fetch (at most a red-link
+  // repaint if pages came or went); changed → the latest replaces it and is cached.
+  // No polling: a reader who wants newer content refreshes.
   async function load() {
-    if (tenantKnown()) {
-      const fresh = freshVersions();
-      const pages = fresh && cachedPageSet(fresh.sha);
-      if (fresh && pages && paintKnown(fresh, pages)) return;
-    }
-    let v: Versions | undefined;
+    const last = tenantKnown() ? lastSeenPage(slug(), diagramTheme()) : undefined;
+    const lastPages = last && lastSeenPageSet();
+    if (last && lastPages) paint(last.page, lastPages, last.blob);
+
+    let v: Versions;
     try {
       v = await resolveVersions();
     } catch {
-      // Couldn't resolve versions → treat as stale and let revalidate() fetch.
+      if (!shown) void revalidate(undefined);
+      return;
     }
-    if (v && paintKnown(v, await pageSet())) return;
-    const blob = v?.versions[slug()];
+    const blob = v.versions[slug()];
+    // An empty map is the no-Engine fallback: it can't say a page is missing.
+    if (!blob && Object.keys(v.versions).length)
+      return fail(new PageNotFoundError(slug()));
+    const pages = await pageSet();
+    if (blob && shown && shown.blob === blob) {
+      if (!sameSet(pages, shown.pages)) paint(shown.page, pages, blob);
+      return;
+    }
     const baked = blob && bakedPage(blob);
     if (!blob || !baked) return void revalidate(v);
     const drawn = { ...baked, html: await renderDiagramsHtml(baked.html) };
     rememberPage(slug(), blob, diagramTheme(), drawn);
-    paint(drawn, await pageSet());
+    paint(drawn, pages, blob);
   }
 
   onMount(() => {

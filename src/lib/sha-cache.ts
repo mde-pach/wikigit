@@ -1,10 +1,11 @@
-// Browser-side cache for data derived from git: each value is stored with the sha
-// it was read at, and is only handed back while that sha is still current — so a
-// return visit reuses it instead of refetching, and a new commit invalidates it
-// without any expiry bookkeeping. Every access is guarded: storage can be full,
-// disabled (private mode) or absent (SSR), and the reader must work regardless.
+// Browser-side cache for data derived from git, each value stored with the sha it
+// was read at. A visit paints the latest stored value at once (readLatest), then
+// checks the live sha: a match (readCached) means nothing to refetch, a mismatch
+// means fetch, replace, store. Entries live 7 days. Every access is guarded:
+// storage can be full, disabled (private mode) or absent (SSR).
 
 const PREFIX = "wikigit:c:";
+const MAX_AGE_MS = 7 * 86_400_000;
 
 interface Entry<T> {
   sha: string;
@@ -23,7 +24,8 @@ function storage(): Storage | undefined {
 function readEntry<T>(key: string): Entry<T> | undefined {
   try {
     const raw = storage()?.getItem(PREFIX + key);
-    return raw ? (JSON.parse(raw) as Entry<T>) : undefined;
+    const e = raw ? (JSON.parse(raw) as Entry<T>) : undefined;
+    return e && Date.now() - e.at <= MAX_AGE_MS ? e : undefined;
   } catch {
     return undefined;
   }
@@ -34,13 +36,11 @@ export function readCached<T>(key: string, sha: string): T | undefined {
   return e && e.sha === sha ? e.value : undefined;
 }
 
-// The latest entry regardless of sha, with its age — for the one value that is
-// itself the source of shas (the version map), which is trusted for a short while.
-export function readLatest<T>(
-  key: string,
-): { sha: string; age: number; value: T } | undefined {
+// The latest stored value whatever its sha — what a visit paints before it knows
+// whether anything changed.
+export function readLatest<T>(key: string): { sha: string; value: T } | undefined {
   const e = readEntry<T>(key);
-  return e ? { sha: e.sha, age: Date.now() - e.at, value: e.value } : undefined;
+  return e ? { sha: e.sha, value: e.value } : undefined;
 }
 
 export function writeCached<T>(key: string, sha: string, value: T): void {

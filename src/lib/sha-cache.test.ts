@@ -33,16 +33,23 @@ describe("sha cache", () => {
     expect(readCached("r:page", "bbb")).toBeUndefined();
   });
 
-  it("reports the latest entry with its age", () => {
-    vi.useFakeTimers({ now: 1_000 });
+  it("hands back the latest entry whatever its sha", () => {
     vi.stubGlobal("localStorage", fakeStorage());
-    writeCached("r:versions", "head1", { index: "s1" });
-    vi.setSystemTime(31_000);
-    expect(readLatest("r:versions")).toEqual({
-      sha: "head1",
-      age: 30_000,
-      value: { index: "s1" },
-    });
+    writeCached("r:page", "aaa", "A");
+    writeCached("r:page", "bbb", "B");
+    expect(readLatest("r:page")).toEqual({ sha: "bbb", value: "B" });
+  });
+
+  it("drops entries older than 7 days", () => {
+    const day = 86_400_000;
+    vi.useFakeTimers({ now: 0 });
+    vi.stubGlobal("localStorage", fakeStorage());
+    writeCached("r:page", "aaa", "A");
+    vi.setSystemTime(7 * day);
+    expect(readLatest("r:page")?.value).toBe("A");
+    vi.setSystemTime(7 * day + 1);
+    expect(readLatest("r:page")).toBeUndefined();
+    expect(readCached("r:page", "aaa")).toBeUndefined();
   });
 
   it("forgets an entry", () => {

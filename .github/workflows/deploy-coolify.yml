@@ -84,20 +84,20 @@ jobs:
       - name: Deploy frontend (web)
         if: steps.pick.outputs.web == 'true' && env.COOLIFY_URL != '' && vars.COOLIFY_WEB_UUID != ''
         run: |
-          curl -fsS -X GET \
+          curl -fsS -X POST \
             "$COOLIFY_URL/api/v1/deploy?uuid=${{ vars.COOLIFY_WEB_UUID }}&force=false" \
             -H "Authorization: Bearer $COOLIFY_TOKEN"
 
       - name: Deploy Engine
         if: steps.pick.outputs.engine == 'true' && env.COOLIFY_URL != '' && vars.COOLIFY_ENGINE_UUID != ''
         run: |
-          curl -fsS -X GET \
+          curl -fsS -X POST \
             "$COOLIFY_URL/api/v1/deploy?uuid=${{ vars.COOLIFY_ENGINE_UUID }}&force=false" \
             -H "Authorization: Bearer $COOLIFY_TOKEN"
 
       - name: Deploy accounts (IdP)
         if: steps.pick.outputs.accounts == 'true' && env.COOLIFY_URL != '' && vars.COOLIFY_ACCOUNTS_UUID != ''
         run: |
-          curl -fsS -X GET \
+          curl -fsS -X POST \
             "$COOLIFY_URL/api/v1/deploy?uuid=${{ vars.COOLIFY_ACCOUNTS_UUID }}&force=false" \
             -H "Authorization: Bearer $COOLIFY_TOKEN"

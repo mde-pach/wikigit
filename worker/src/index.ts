@@ -90,19 +90,37 @@ export const CACHE_CONTROL: Record<string, string> = {
   "GET /config": "public, s-maxage=30, stale-while-revalidate=300",
 };
 
+// Behind a TLS-terminating reverse proxy (Coolify/Traefik) the container sees the
+// request over plain HTTP, so `request.url` is `http://…`. Honour the forwarded
+// scheme/host so OAuth redirect URIs and canonical links are the real external
+// `https://…` ones the browser and GitHub expect.
+function externalUrl(request: Request): URL {
+  const url = new URL(request.url);
+  const fwdProto = request.headers.get("x-forwarded-proto");
+  if (fwdProto) url.protocol = `${fwdProto.split(",")[0].trim()}:`;
+  const fwdHost = request.headers.get("x-forwarded-host");
+  if (fwdHost) url.host = fwdHost.split(",")[0].trim();
+  return url;
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const headers = corsHeaders(env, request);
     if (request.method === "OPTIONS") return new Response(null, { headers });
 
+    const url = externalUrl(request);
+
     // Operator-global endpoints, answered BEFORE the tenant gate: they read/write
     // the operator repo (registry / diagnostics / claim), not the requested tenant,
     // so they must run on the base env. `/status` also has to stay reachable for an
-    // un-connected repo (it's what tells the setup page to connect).
+    // un-connected repo (it's what tells the setup page to connect). Sign-in is
+    // identity, not a wiki, so it never depends on a repo being served either.
     {
-      const url = new URL(request.url);
       const key = `${request.method} ${url.pathname}`;
       const preTenant: Record<string, () => Promise<unknown>> = {
+        "GET /auth/status": () => Promise.resolve(authStatus(env)),
+        "GET /auth/login": () => authLogin(env, url),
+        "GET /auth/callback": () => authCallback(env, url),
         "GET /status": () => connectionStatus(env, request),
         "GET /resolve": () => resolveTenantHost(env, request, url),
         "GET /tenant-available": () => tenantAvailable(env, url),
@@ -118,12 +136,10 @@ export default {
       const pre = preTenant[key];
       if (pre) {
         try {
+          const out = await pre();
+          if (out instanceof Response) return out; // the sign-in redirects
           const cc = CACHE_CONTROL[key];
-          return json(
-            await pre(),
-            200,
-            cc ? { ...headers, "Cache-Control": cc } : headers,
-          );
+          return json(out, 200, cc ? { ...headers, "Cache-Control": cc } : headers);
         } catch (err) {
           const code = err instanceof HttpError ? err.status : 500;
           return json({ error: message(err) }, code, headers);
@@ -140,15 +156,6 @@ export default {
       return json({ error: message(err) }, status, headers);
     }
 
-    const url = new URL(request.url);
-    // Behind a TLS-terminating reverse proxy (Coolify/Traefik) the container sees
-    // the request over plain HTTP, so `request.url` is `http://…`. Honour the
-    // forwarded scheme/host so OAuth redirect URIs and canonical links are the
-    // real external `https://…` ones the browser and GitHub expect.
-    const fwdProto = request.headers.get("x-forwarded-proto");
-    if (fwdProto) url.protocol = `${fwdProto.split(",")[0].trim()}:`;
-    const fwdHost = request.headers.get("x-forwarded-host");
-    if (fwdHost) url.host = fwdHost.split(",")[0].trim();
     const q = url.searchParams;
     const routes: Record<string, () => Promise<unknown>> = {
       "GET /latest": () => latestSha(env),
@@ -182,9 +189,6 @@ export default {
       "GET /patrol-status": () => patrolStatus(env, q.get("slug") ?? ""),
       "GET /editors": () => listEditors(env, request),
       "GET /suppressed": () => listSuppressed(env, request),
-      "GET /auth/status": () => Promise.resolve(authStatus(env)),
-      "GET /auth/login": () => authLogin(env, url),
-      "GET /auth/callback": () => authCallback(env, url),
       // Reject up front with a clean HTTP status; stream only the publish phase.
       "POST /edit": async () => {
         const prepared = await prepareEdit(
@@ -239,7 +243,7 @@ export default {
     if (!handler) return json({ error: "Not found" }, 404, headers);
     try {
       const out = await handler();
-      // Auth routes return a redirect Response directly; everything else is JSON.
+      // The publish stream is a Response already; everything else is JSON.
       if (out instanceof Response) return out;
       const cc = CACHE_CONTROL[`${request.method} ${url.pathname}`];
       return json(out, 200, cc ? { ...headers, "Cache-Control": cc } : headers);

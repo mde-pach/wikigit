@@ -79,6 +79,8 @@ export interface Platform {
 // The NDJSON publish stream collapses to its terminal event, so an edit reads
 // like any other call: `done` → 200 + result, `error` → its status + message.
 async function readReply(res: Response): Promise<Reply> {
+  if (res.status >= 300 && res.status < 400)
+    return { status: res.status, body: { location: res.headers.get("Location") } };
   if (!res.headers.get("Content-Type")?.includes("ndjson"))
     return { status: res.status, body: (await res.json()) as Record<string, unknown> };
   const events = (await res.text())
